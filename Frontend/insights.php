@@ -6,23 +6,16 @@ if (!isset($_SESSION["Uid"])) {
 }
 $user_id = $_SESSION["Uid"];
 
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// DB Connection
-$conn = new mysqli("localhost", "root", "", "FiscalPoint");
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
-$currentMonthNum = date('m');
-$currentMonthName = date('F');
+$currentMonth = date('Y-m');
 
 // Budget for this month
 $sqlBudget = "SELECT Amount FROM Budget WHERE Uid = ? AND Month = ?";
 $stmt = $conn->prepare($sqlBudget);
-$stmt->bind_param("is", $user_id, $currentMonthName);
+$stmt->bind_param("is", $user_id, $currentMonth);
 $stmt->execute();
 $resultBudget = $stmt->get_result();
 $budgetAmount = ($resultBudget->num_rows > 0) ? $resultBudget->fetch_assoc()['Amount'] : 0;
@@ -30,16 +23,16 @@ $budgetAmount = ($resultBudget->num_rows > 0) ? $resultBudget->fetch_assoc()['Am
 // Income for this month
 $sqlIncome = "SELECT SUM(Income) AS Income FROM Income WHERE Uid = ? AND Month = ?";
 $stmtIncome = $conn->prepare($sqlIncome);
-$stmtIncome->bind_param("is", $user_id, $currentMonthName);
+$stmtIncome->bind_param("is", $user_id, $currentMonth);
 $stmtIncome->execute();
 $resultIncome = $stmtIncome->get_result();
 $totalIncome = ($resultIncome->num_rows > 0) ? $resultIncome->fetch_assoc()['Income'] : 0;
 
 // Expenses by category this month
 $sqlExpenses = "SELECT category, SUM(amount) AS totalExpense 
-                FROM Expense WHERE Uid = ? AND MONTH(Date) = ? GROUP BY category";
+                FROM Expense WHERE Uid = ? AND DATE_FORMAT(Date, '%Y-%m') = ? GROUP BY category";
 $stmt = $conn->prepare($sqlExpenses);
-$stmt->bind_param("ii", $user_id, $currentMonthNum);
+$stmt->bind_param("is", $user_id, $currentMonth);
 $stmt->execute();
 $resultExpenses = $stmt->get_result();
 
@@ -98,12 +91,11 @@ if ($topCategory) {
 }
 
 // Additional Insights
-$monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 $monthlyExpense = [];
 $scatterData = [];
 
 // Expense summary
-$sqlMonthlyExpense = "SELECT MONTH(Date) as m, SUM(amount) as total FROM Expense WHERE Uid = ? GROUP BY MONTH(Date)";
+$sqlMonthlyExpense = "SELECT DATE_FORMAT(Date, '%Y-%m') AS period, SUM(amount) AS total FROM Expense WHERE Uid = ? GROUP BY period";
 $stmt = $conn->prepare($sqlMonthlyExpense);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
@@ -113,39 +105,43 @@ $monthCount = $resAvg->num_rows;
 $totalForAvg = 0;
 
 while ($row = $resAvg->fetch_assoc()) {
-    $monthlyExpense[$row['m']] = $row['total'];
+    $monthlyExpense[$row['period']] = $row['total'];
     $totalForAvg += $row['total'];
 }
 $avgExpense = ($monthCount > 0) ? $totalForAvg / $monthCount : 0;
 
 // Saving = Income - Expense per month
-$sqlIncomeMonths = "SELECT Month, SUM(Income) AS total FROM Income WHERE Uid = ? GROUP BY Month";
+$sqlIncomeMonths = "SELECT Month AS period, SUM(Income) AS total FROM Income WHERE Uid = ? GROUP BY Month";
 $stmt = $conn->prepare($sqlIncomeMonths);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $resIncomes = $stmt->get_result();
 
 $savings = [];
+$highestIncome = null;
+$highestIncomeMonth = 'N/A';
 
 while ($row = $resIncomes->fetch_assoc()) {
-    $monthStr = $row['Month'];
-    $monthIndex = array_search($monthStr, $monthNames) + 1;
+    $period = $row['period'];
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
+        continue;
+    }
+
     $income = $row['total'];
-    $expense = $monthlyExpense[$monthIndex] ?? 0;
-    $savings[$monthStr] = $income - $expense;
+    $expense = $monthlyExpense[$period] ?? 0;
+    $savings[$period] = $income - $expense;
     $scatterData[] = ["x" => $expense, "y" => $income];
+
+    if ($highestIncome === null || $income > $highestIncome) {
+        $highestIncome = $income;
+        $highestIncomeMonth = date('F Y', strtotime($period . '-01'));
+    }
 }
 
 arsort($savings);
-$bestSavingMonth = !empty($savings) ? array_key_first($savings) : 'N/A';
-
-// Highest income month
-$highestIncomeMonth = 'N/A';
-if ($resIncomes->num_rows > 0) {
-    $resIncomes->data_seek(0);
-    $row = $resIncomes->fetch_assoc();
-    $highestIncomeMonth = $row['Month'];
-}
+$bestSavingMonth = !empty($savings)
+    ? date('F Y', strtotime(array_key_first($savings) . '-01'))
+    : 'N/A';
 
 $conn->close();
 ?>

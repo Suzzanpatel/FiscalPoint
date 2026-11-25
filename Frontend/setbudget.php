@@ -1,6 +1,5 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 session_start();
 
 // Check if user is logged in
@@ -10,26 +9,17 @@ if (!isset($_SESSION["Uid"])) {
 
 $user_id = $_SESSION["Uid"];
 
-// Database connection
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Handle form submission (Set Budget)
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["setBudget"])) {
     $month = $_POST["month"];
-    $monthName = date("F", strtotime($month . "-01"));
     $amount = filter_var($_POST["budget"], FILTER_VALIDATE_FLOAT);
 
-    if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
         die("<script>alert('Invalid month.'); window.location.href='setbudget.php';</script>");
     }
+    $monthLabel = date("F Y", strtotime($month . "-01"));
 
     // Prevent setting budget for past months
     $currentYearMonth = date("Y-m");
@@ -44,16 +34,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["setBudget"])) {
     // Check if budget already exists
     $check_sql = "SELECT * FROM Budget WHERE Uid = ? AND Month = ?";
     $stmt_check = $conn->prepare($check_sql);
-    $stmt_check->bind_param("is", $user_id, $monthName);
+    $stmt_check->bind_param("is", $user_id, $month);
     $stmt_check->execute();
     $result = $stmt_check->get_result();
 
     if ($result->num_rows > 0) {
-        echo "<script>alert('Budget for $monthName already exists! Reset it first if you want to change it.'); window.location.href='setbudget.php';</script>";
+        echo "<script>alert('Budget for $monthLabel already exists! Reset it first if you want to change it.'); window.location.href='setbudget.php';</script>";
     } else {
         $insert_sql = "INSERT INTO Budget (Uid, Month, Amount) VALUES (?, ?, ?)";
         $stmt_insert = $conn->prepare($insert_sql);
-        $stmt_insert->bind_param("isd", $user_id, $monthName, $amount);
+        $stmt_insert->bind_param("isd", $user_id, $month, $amount);
         $stmt_insert->execute();
         echo "<script>alert('Budget set successfully!'); window.location.href='setbudget.php';</script>";
         $stmt_insert->close();
@@ -65,11 +55,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["setBudget"])) {
 // Handle budget reset
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["resetBudget"])) {
     $month = $_POST["month"];
-    $monthName = date("F", strtotime($month . "-01"));
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+        http_response_code(400);
+        exit("Invalid month.");
+    }
 
     $delete_sql = "DELETE FROM Budget WHERE Uid = ? AND Month = ?";
     $stmt_delete = $conn->prepare($delete_sql);
-    $stmt_delete->bind_param("is", $user_id, $monthName);
+    $stmt_delete->bind_param("is", $user_id, $month);
     
     if ($stmt_delete->execute()) {
         echo "<script>alert('Budget reset successfully!'); window.location.href='setbudget.php';</script>";

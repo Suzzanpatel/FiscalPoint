@@ -1,22 +1,13 @@
 <?php
 session_start();
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
 if (!isset($_SESSION["Uid"]) || $_SESSION["Role"] !== "admin") {
     header("Location: login.php");
     exit();
 }
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Get user ID from URL
 $uid = isset($_GET['uid']) ? intval($_GET['uid']) : 0;

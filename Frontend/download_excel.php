@@ -1,6 +1,5 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 session_start();
@@ -13,15 +12,7 @@ if (!isset($_SESSION["Uid"])) {
 }
 
 $user_id = $_SESSION["Uid"];
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 $selected_month = $_POST['month'] ?? date('Y-m');
 $date_order = in_array($_POST['date_order'] ?? '', ['ASC', 'DESC'], true) ? $_POST['date_order'] : '';

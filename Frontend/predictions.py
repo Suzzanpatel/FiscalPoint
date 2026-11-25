@@ -4,38 +4,41 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
 import matplotlib
-# Use a non-interactive backend to avoid the NSException
-matplotlib.use('Agg') 
+from functools import wraps
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import base64
 import os
 import traceback
-import sys
+import logging
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
 
-# Load environment variables
 load_dotenv()
 
-# Initialize Flask app
 app = Flask(__name__)
 CORS(app, resources={r"/predict_budget": {"origins": "http://127.0.0.1"}}, supports_credentials=False)
 
-# Enable more detailed logging
-import logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Add a simple route to check if server is running
+
+def localhost_only(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            return jsonify({"error": "Forbidden"}), 403
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 @app.route('/', methods=['GET'])
 def health_check():
     return jsonify({"status": "online", "message": "Prediction server is running"})
 
-# Add a debug endpoint to check database connection
+
 @app.route('/test_db', methods=['GET'])
 def test_db():
     try:
@@ -46,13 +49,12 @@ def test_db():
             cursor.close()
             conn.close()
             return jsonify({"status": "success", "message": "Database connection successful"})
-        else:
-            return jsonify({"status": "error", "message": "Could not connect to database"}), 500
-    except Exception as e:
-        error_detail = traceback.format_exc()
-        return jsonify({"status": "error", "message": str(e), "detail": error_detail}), 500
+        return jsonify({"status": "error", "message": "Could not connect to database"}), 500
+    except Exception:
+        logger.exception("Database connection check failed")
+        return jsonify({"status": "error", "message": "Database connection failed"}), 500
 
-# Add an option route to handle preflight requests
+
 @app.route('/predict_budget', methods=['OPTIONS'])
 def options():
     response = jsonify({'status': 'success'})
@@ -61,28 +63,37 @@ def options():
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
 
-# Database connection
+
 def get_db_connection():
+    settings = {
+        "host": os.getenv("DB_HOST"),
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "database": os.getenv("DB_NAME"),
+    }
+    if (
+        not settings["host"]
+        or not settings["user"]
+        or settings["password"] is None
+        or not settings["database"]
+    ):
+        logger.error("Required database environment variables are missing")
+        return None
+
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "localhost"),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASSWORD", ""),
-            database=os.getenv("DB_NAME", "FiscalPoint")
-        )
+        conn = mysql.connector.connect(**settings)
         logger.info("Database connection successful")
         return conn
     except mysql.connector.Error as err:
         logger.error(f"Error connecting to database: {err}")
         return None
 
-# Fetch expense data from database
+
 def fetch_expense_data(Uid):
     try:
         conn = get_db_connection()
         if not conn:
-            logger.error("No database connection in fetch_expense_data")
-            return None
+            raise ConnectionError("Database connection is unavailable")
             
         cursor = conn.cursor(dictionary=True)
 
@@ -117,92 +128,109 @@ def fetch_expense_data(Uid):
                 logger.warning(f"Some dates could not be converted: {df[df['date'].isna()]}")
                 df = df.dropna(subset=['date'])
                 
-            # Extract year and month
-            df['Year'] = df['date'].dt.year
-            df['Month'] = df['date'].dt.month
-            
             return df
         else:
             logger.error(f"Column 'date' not found in result. Columns: {df.columns}")
             return None
 
-    except mysql.connector.Error as err:
-        logger.error(f"Database error in fetch_expense_data: {err}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error in fetch_expense_data: {e}")
-        logger.error(traceback.format_exc())
-        return None
+    except Exception:
+        logger.exception("Failed to fetch expense data")
+        raise
     finally:
         if 'cursor' in locals() and cursor:
             cursor.close()
         if 'conn' in locals() and conn:
             conn.close()
 
-# Predict next month expenses
-def predict_next_month(Uid):
-    data = fetch_expense_data(Uid)
-    if data is None:
-        return {"message": "No expense data found for this user."}
-    
-    if len(data) < 2:
-        return {"message": "Not enough expense data for prediction. Please add more expenses."}
 
-    # Get current date for reference
-    current_date = datetime.now()
-    data['Time'] = data['Year'] * 100 + data['Month']
-    
-    # Get the most recent month's data
-    last_year = current_date.year
-    last_month = current_date.month
-    
-    # Calculate next month
-    if last_month == 12:
-        next_year = last_year + 1
-        next_month = 1
-    else:
-        next_year = last_year
-        next_month = last_month + 1
-    
-    next_time = np.array([[next_year * 100 + next_month]])
+def monthly_category_totals(data):
+    data = data.dropna(subset=['date', 'category', 'amount'])
+    if data.empty:
+        return pd.DataFrame()
 
-    # Get current month's expenses
-    current_month_data = data[
-        (data['Year'] == last_year) & 
-        (data['Month'] == last_month)
-    ]
-    current_category_expenses = current_month_data.groupby('category')['amount'].sum().to_dict()
+    monthly = (
+        data.assign(period=data['date'].dt.to_period('M'))
+        .pivot_table(index='period', columns='category', values='amount',
+                     aggfunc='sum', fill_value=0)
+        .sort_index()
+    )
+    periods = pd.period_range(monthly.index.min(), monthly.index.max(), freq='M')
+    return monthly.reindex(periods, fill_value=0)
 
-    # Predict for each category
-    category_predictions = {}
-    unique_categories = data['category'].unique()
 
-    for category in unique_categories:
-        category_data = data[data['category'] == category]
-        
-        if len(category_data) >= 2:  # Need at least 2 points for linear regression
-            X_category = category_data[['Time']].values
-            y_category = category_data['amount'].values
+def backtest(series, min_train=3):
+    values = np.asarray(series, dtype=float)
+    time_index = np.arange(len(values)).reshape(-1, 1)
+    errors = {'naive': [], 'ma3': [], 'linreg': []}
 
-            model = LinearRegression()
-            model.fit(X_category, y_category)
-
-            predicted = max(0, model.predict(next_time)[0])  # Ensure no negative predictions
-            category_predictions[category] = float(round(predicted, 2))
-        else:
-            # If not enough data, use the average of existing expenses
-            category_predictions[category] = float(round(category_data['amount'].mean(), 2))
-
-    # Generate comparison graph
-    graph = generate_comparison_graph(current_category_expenses, category_predictions)
+    for k in range(min_train, len(values)):
+        train, actual = values[:k], values[k]
+        errors['naive'].append(abs(train[-1] - actual))
+        errors['ma3'].append(abs(train[-3:].mean() - actual))
+        model = LinearRegression().fit(time_index[:k], train)
+        prediction = max(0, model.predict(time_index[[k]])[0])
+        errors['linreg'].append(abs(prediction - actual))
 
     return {
-        "year": next_year,
-        "month": next_month,
-        "predicted_expense": float(round(sum(category_predictions.values()), 2)),
+        name: float(np.mean(method_errors)) if method_errors else None
+        for name, method_errors in errors.items()
+    }
+
+
+def choose_method(errors, series_length):
+    if errors['linreg'] is not None and errors['naive'] is not None and errors['ma3'] is not None:
+        if errors['linreg'] < errors['naive'] and errors['linreg'] < errors['ma3']:
+            return 'linreg'
+
+    available_baselines = {
+        name: error for name, error in errors.items()
+        if name in ('naive', 'ma3') and error is not None
+    }
+    if available_baselines:
+        return min(available_baselines, key=available_baselines.get)
+    return 'ma3' if series_length >= 3 else 'naive'
+
+
+def forecast_category(series, method):
+    values = np.asarray(series, dtype=float)
+    if method == 'linreg':
+        time_index = np.arange(len(values)).reshape(-1, 1)
+        model = LinearRegression().fit(time_index, values)
+        prediction = model.predict([[len(values)]])[0]
+    elif method == 'ma3':
+        prediction = values[-3:].mean()
+    else:
+        prediction = values[-1]
+    return max(0.0, float(prediction))
+
+
+def predict_next_month(Uid):
+    data = fetch_expense_data(Uid)
+    if data is None or data.empty:
+        return {"message": "No expense data found for this user."}
+
+    monthly = monthly_category_totals(data)
+    if monthly.empty:
+        return {"message": "No categorized expense data found for this user."}
+    next_period = monthly.index[-1] + 1
+    current_category_expenses = monthly.iloc[-1].to_dict()
+    category_predictions = {}
+
+    for category in monthly.columns:
+        series = monthly[category].to_numpy(dtype=float)
+        errors = backtest(series)
+        method = choose_method(errors, len(series))
+        category_predictions[category] = round(forecast_category(series, method), 2)
+
+    return {
+        "year": next_period.year,
+        "month": next_period.month,
+        "predicted_expense": round(sum(category_predictions.values()), 2),
         "category_predictions": category_predictions,
         "current_category_expenses": current_category_expenses,
-        "comparison_graph": graph
+        "comparison_graph": generate_comparison_graph(
+            current_category_expenses, category_predictions
+        ),
     }
 
 # Generate base64 bar chart comparing expenses
@@ -217,7 +245,7 @@ def generate_comparison_graph(current, predicted):
     # Create figure without using seaborn
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    rects1 = ax.bar(x - width/2, current_values, width, label='Current Month', color='#2ecc71')
+    rects1 = ax.bar(x - width/2, current_values, width, label='Latest Month (Observed)', color='#2ecc71')
     rects2 = ax.bar(x + width/2, predicted_values, width, label='Next Month (Predicted)', color='#3498db')
 
     ax.set_ylabel('Expenses (₹)', fontsize=12)
@@ -251,10 +279,9 @@ def generate_comparison_graph(current, predicted):
 
 # Route to predict and return insights
 @app.route('/predict_budget', methods=['POST'])
+@localhost_only
 def predict_budget():
     try:
-        if request.remote_addr not in ('127.0.0.1', '::1'):
-            return jsonify({"error": "Forbidden"}), 403
         logger.info("Received predict_budget request")
         data = request.get_json()
         
@@ -268,222 +295,107 @@ def predict_budget():
 
         user_id = data['user_id']
         logger.info(f"Processing request for user_id: {user_id}")
-        
-        # First test database connection
-        expense_data = fetch_expense_data(user_id)
-        
-        # If we don't have expense data, return a simple message
-        if expense_data is None or len(expense_data) < 2:
-            logger.info(f"Not enough data for user {user_id} to make predictions.")
-            return jsonify({
-                "message": "Not enough expense data for prediction. Please add more expenses."
-            })
-        
-        # If we have data, create a simplified prediction
-        try:
-            # Get unique categories
-            categories = expense_data['category'].unique()
-            
-            # Create simple predictions (just for testing)
-            current_month = datetime.now().month
-            current_year = datetime.now().year
-            
-            next_month = current_month + 1 if current_month < 12 else 1
-            next_year = current_year if current_month < 12 else current_year + 1
-            
-            # Simple average-based prediction
-            # Group by category and get mean amount
-            category_avgs = expense_data.groupby('category')['amount'].mean().to_dict()
-            
-            # Generate text summary
-            summary = f"📅 Predicted Insights for Month {next_month}, {next_year}\n\n"
-            summary += "🔮 Prediction based on your past spending patterns:\n\n"
-            for cat, avg in category_avgs.items():
-                summary += f"- {cat}: ₹{avg:.2f}\n"
-            # Create a simple graph
-            fig, ax = plt.subplots(figsize=(10, 6))
-            # Simple bar chart of category averages
-            cats = list(category_avgs.keys())
-            values = [category_avgs[cat] for cat in cats]
-            # Use default colors instead of seaborn styling
-            ax.bar(cats, values, color='#3498db')
-            ax.set_ylabel('Average Expense (₹)', fontsize=12)
-            ax.set_title('Category-wise Average Expenses', fontsize=14)
-            plt.xticks(rotation=45, ha='right')
-            fig.tight_layout()  # Add this to ensure proper spacing
-            
-            # Convert to base64
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', bbox_inches='tight')
-            buf.seek(0)
-            img_str = base64.b64encode(buf.read()).decode('utf-8')
-            plt.close(fig)
-            
-            return jsonify({
-                "summary": summary,
-                "graph_base64": img_str
-            })
-            
-        except Exception as e:
-            logger.error(f"Error generating prediction: {e}")
-            logger.error(traceback.format_exc())
-            return jsonify({
-                "message": f"Error generating prediction: {str(e)}"
-            })
-            
-    except Exception as e:
-        logger.error(f"Error in predict_budget: {e}")
-        logger.error(traceback.format_exc())
+        prediction = predict_next_month(user_id)
+        if "message" in prediction:
+            return jsonify(prediction)
+
+        month_name = pd.Period(
+            year=prediction["year"], month=prediction["month"], freq="M"
+        ).strftime("%B")
+        summary = (
+            f"📅 Predicted Insights for Month {prediction['month']}, "
+            f"{prediction['year']}\n\n"
+            "🔮 Prediction based on monthly spending patterns:\n\n"
+        )
+        for category, amount in prediction["category_predictions"].items():
+            summary += f"- {category}: ₹{amount:.2f}\n"
+
         return jsonify({
-            "error": f"An error occurred: {str(e)}",
-            "detail": traceback.format_exc()
-        }), 500
+            "summary": summary,
+            "graph_base64": prediction["comparison_graph"],
+            "predicted_expense": prediction["predicted_expense"],
+            "month_name": month_name,
+        })
+    except Exception:
+        logger.exception("Error in predict_budget")
+        return jsonify({"error": "An error occurred while generating the prediction"}), 500
 
 def evaluate_model_accuracy(Uid):
     try:
-        # Fetch data
         data = fetch_expense_data(Uid)
-        if data is None or len(data) < 3:  
-            return {
-                "error": "Insufficient data for model evaluation. Need at least 3 months of data."
+        if data is None or data.empty:
+            return {"error": "No expense data found for this user."}
+
+        monthly = monthly_category_totals(data)
+        if monthly.empty:
+            return {"error": "No categorized expense data found for this user."}
+        category_wise = {}
+        for category in monthly.columns:
+            errors = backtest(monthly[category].to_numpy(dtype=float))
+            category_wise[category] = {
+                "naive_mae": errors["naive"],
+                "ma3_mae": errors["ma3"],
+                "linreg_mae": errors["linreg"],
+                "selected_method": choose_method(errors, len(monthly)),
+                "sample_size": len(monthly),
             }
 
-        # Initialize results dictionary
-        evaluation_results = {
-            "overall": {},
-            "category_wise": {},
-            "visualization": None
-        }
+        overall = {}
+        for method in ("naive", "ma3", "linreg"):
+            method_errors = [
+                values[f"{method}_mae"] for values in category_wise.values()
+                if values[f"{method}_mae"] is not None
+            ]
+            overall[f"{method}_mae"] = (
+                float(np.mean(method_errors)) if method_errors else None
+            )
 
-        # Prepare data
-        data['Time'] = data['Year'] * 100 + data['Month']
-        unique_categories = data['category'].unique()
+        fig, ax = plt.subplots(figsize=(12, 6))
+        categories = list(category_wise)
+        methods = ("naive", "ma3", "linreg")
+        width = 0.8 / len(methods)
+        for index, method in enumerate(methods):
+            errors = [category_wise[cat][f"{method}_mae"] for cat in categories]
+            positions = np.arange(len(categories)) + (index - 1) * width
+            ax.bar(positions, [error or 0 for error in errors], width, label=method)
+        ax.set_title("Rolling-origin mean absolute error by category")
+        ax.set_xlabel("Category")
+        ax.set_ylabel("Mean absolute error")
+        ax.set_xticks(np.arange(len(categories)))
+        ax.set_xticklabels(categories, rotation=45, ha="right")
+        ax.legend()
+        fig.tight_layout()
 
-        # Category-wise evaluation
-        for category in unique_categories:
-            category_data = data[data['category'] == category]
-            
-            if len(category_data) >= 3:  # Need at least 3 points for meaningful split
-                X = category_data[['Time']].values
-                y = category_data['amount'].values
-
-                # Split data - use 80% for training, 20% for testing
-                X_train, X_test, y_train, y_test = train_test_split(
-                    X, y, test_size=0.2, random_state=42
-                )
-
-                # Train model
-                model = LinearRegression()
-                model.fit(X_train, y_train)
-
-                # Make predictions
-                y_pred = model.predict(X_test)
-
-                # Calculate metrics
-                mae = mean_absolute_error(y_test, y_pred)
-                mse = mean_squared_error(y_test, y_pred)
-                rmse = np.sqrt(mse)
-                r2 = r2_score(y_test, y_pred)
-
-                evaluation_results["category_wise"][category] = {
-                    "mae": float(mae),
-                    "mse": float(mse),
-                    "rmse": float(rmse),
-                    "r2_score": float(r2),
-                    "sample_size": len(category_data)
-                }
-
-        # Calculate overall metrics
-        all_true = []
-        all_pred = []
-        
-        for category in unique_categories:
-            if category in evaluation_results["category_wise"]:
-                category_data = data[data['category'] == category]
-                X = category_data[['Time']].values
-                y = category_data['amount'].values
-                
-                model = LinearRegression()
-                model.fit(X, y)
-                
-                # Predict next value
-                next_time = np.max(X) + 1
-                pred = model.predict([[next_time]])
-                
-                all_true.extend(y)
-                all_pred.extend(model.predict(X))
-
-        # Overall metrics
-        overall_mae = mean_absolute_error(all_true, all_pred)
-        overall_mse = mean_squared_error(all_true, all_pred)
-        overall_rmse = np.sqrt(overall_mse)
-        overall_r2 = r2_score(all_true, all_pred)
-
-        evaluation_results["overall"] = {
-            "mae": float(overall_mae),
-            "mse": float(overall_mse),
-            "rmse": float(overall_rmse),
-            "r2_score": float(overall_r2),
-            "total_samples": len(all_true)
-        }
-
-        # Generate visualization
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
-
-        # Plot 1: Category-wise R² scores
-        categories = list(evaluation_results["category_wise"].keys())
-        r2_scores = [evaluation_results["category_wise"][cat]["r2_score"] for cat in categories]
-        
-        ax1.bar(categories, r2_scores, color='#3498db')
-        ax1.set_title('R² Score by Category')
-        ax1.set_xlabel('Category')
-        ax1.set_ylabel('R² Score')
-        plt.xticks(rotation=45, ha='right')
-
-        # Plot 2: Category-wise RMSE
-        rmse_scores = [evaluation_results["category_wise"][cat]["rmse"] for cat in categories]
-        ax2.bar(categories, rmse_scores, color='#e74c3c')
-        ax2.set_title('RMSE by Category')
-        ax2.set_xlabel('Category')
-        ax2.set_ylabel('RMSE')
-        plt.xticks(rotation=45, ha='right')
-
-        plt.tight_layout()
-
-        # Convert plot to base64
         buffer = io.BytesIO()
-        plt.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
-        buffer.seek(0)
-        evaluation_results["visualization"] = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        plt.close()
+        plt.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
 
-        return evaluation_results
-
-    except Exception as e:
-        logger.error(f"Error in evaluate_model_accuracy: {e}")
-        logger.error(traceback.format_exc())
-        return {"error": str(e)}
+        return {
+            "overall": overall,
+            "category_wise": category_wise,
+            "visualization": base64.b64encode(buffer.getvalue()).decode("utf-8"),
+        }
+    except Exception:
+        logger.exception("Error in evaluate_model_accuracy")
+        return {"error": "Model evaluation failed"}
 
 # Add new route for model evaluation
 @app.route('/evaluate_model', methods=['POST'])
+@localhost_only
 def evaluate_model():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data or 'user_id' not in data:
             return jsonify({"error": "user_id is required"}), 400
 
         user_id = data['user_id']
         results = evaluate_model_accuracy(user_id)
-        
         if "error" in results:
             return jsonify(results), 400
-
         return jsonify(results)
-
-    except Exception as e:
-        logger.error(f"Error in evaluate_model route: {e}")
-        logger.error(traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        logger.exception("Error in evaluate_model route")
+        return jsonify({"error": "Model evaluation failed"}), 500
 
 # Run the app
 if __name__ == '__main__':

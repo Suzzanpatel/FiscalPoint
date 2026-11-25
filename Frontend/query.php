@@ -2,19 +2,7 @@
 // Start session to track logged-in user
 session_start();
 
-// Database connection parameters
-$servername = "localhost"; 
-$username = "root"; 
-$password = ""; 
-$dbname = "FiscalPoint"; 
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Function to sanitize input data and prevent double encoding
 function sanitize_input($data) {

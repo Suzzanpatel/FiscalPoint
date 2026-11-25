@@ -2,36 +2,14 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 use PHPMailer\PHPMailer\SMTP;
-use Dotenv\Dotenv;
 
 session_start();
 
 // Enable Error Reporting and Logging
 ini_set('log_errors', 1);
-ini_set('error_log', __DIR__ . '/error.log');
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
-// Ensure Composer's autoload is included
-require_once __DIR__ . '/../vendor/autoload.php';
-
-// Load Environment Variables
-$dotenv = Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->load();
-
-// Database Credentials
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Only process POST requests
 if ($_SERVER["REQUEST_METHOD"] == "POST") {

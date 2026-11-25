@@ -7,24 +7,9 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Mpdf\Mpdf;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
-use Dotenv\Dotenv;
 
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-$dotenv = Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->safeLoad();
-
-// Database Connection
-$servername = "localhost";
-$username = "root";  // Change if needed
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // **Fix: Check if session variables exist**
 $uid = isset($_SESSION['Uid']) ? $_SESSION['Uid'] : 0;

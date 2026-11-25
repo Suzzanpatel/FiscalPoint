@@ -1,21 +1,11 @@
 <?php
 // Enable error reporting
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
 // Start session
 session_start();
 
-// Database connection
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Database Connection Failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Sanitize input function
 function sanitize_input($data) {

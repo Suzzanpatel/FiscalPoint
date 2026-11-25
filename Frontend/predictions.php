@@ -2,20 +2,9 @@
 session_start();
 
 // Enable error reporting for debugging
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// DB connection (still required for session verification)
-$servername = "localhost"; 
-$username = "root"; 
-$password = ""; 
-$dbname = "FiscalPoint"; 
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Check if logged in
 if (!isset($_SESSION["Uid"])) {

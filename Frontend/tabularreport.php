@@ -1,6 +1,5 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 session_start(); // Start the session
 
 // Check if the user is logged in
@@ -11,18 +10,7 @@ if (!isset($_SESSION["Uid"])) {
 // Retrieve logged-in user ID
 $user_id = $_SESSION["Uid"];
 
-// Database connection
-$servername = "localhost"; 
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Handle Expense Deletion
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["delete_id"])) {

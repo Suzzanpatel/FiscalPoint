@@ -2,21 +2,8 @@
 // Start session and enable error reporting
 session_start();
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
-// Database connection details
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Fetch Uid from session
 if (!isset($_SESSION['Uid'])) {
@@ -62,7 +49,8 @@ $row_yearly = $result_yearly->fetch_assoc();
 $yearly_expense = isset($row_yearly['total_yearly']) ? $row_yearly['total_yearly'] : 0;
 
 // Fetch user's budget for the current month
-$currentMonth = date("F");
+$currentMonth = date("Y-m");
+$currentMonthLabel = date("F Y");
 $sql_budget = "SELECT Amount FROM Budget WHERE Uid = ? AND Month = ?";
 $stmt = $conn->prepare($sql_budget);
 $stmt->bind_param("is", $uid, $currentMonth);
@@ -169,13 +157,13 @@ while ($row = $result_calendar->fetch_assoc()) {
 <main class="dashboard">
     <div class="grid-container">
         <div class="box">
-            <h3>Your Budget for <?php echo $currentMonth; ?>:</h3>
+            <h3>Your Budget for <?php echo $currentMonthLabel; ?>:</h3>
             <div class="content-box">
                 <p><?php echo $monthly_budget; ?></p>
             </div>
         </div>
         <div class="box">
-            <h3>Your Income for <?php echo $currentMonth; ?>:</h3>
+            <h3>Your Income for <?php echo $currentMonthLabel; ?>:</h3>
             <div class="content-box">
                 <p><?php echo $monthly_income; ?></p>
             </div>

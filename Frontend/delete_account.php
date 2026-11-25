@@ -1,15 +1,6 @@
 <?php
 session_start();
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-    die(json_encode(["success" => false, "message" => "Database connection failed."]));
-}
+require_once __DIR__ . '/db.php';
 
 // Ensure user is logged in
 if (!isset($_SESSION['Uid'])) {

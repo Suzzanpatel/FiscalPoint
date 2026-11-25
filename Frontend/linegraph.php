@@ -1,6 +1,5 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 session_start();
 
 // Check if the user is logged in
@@ -10,16 +9,7 @@ if (!isset($_SESSION["Uid"])) {
 
 $user_id = $_SESSION["Uid"];
 
-// Database connection
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Fetch User Details
 $sql_user = "SELECT Uname FROM User WHERE Uid = ?";
@@ -31,15 +21,15 @@ $user_name = ($result_user->num_rows > 0) ? $result_user->fetch_assoc()["Uname"]
 $stmt_user->close();
 
 // Get the selected month (default: current month)
-$selected_month = isset($_POST['month']) ? $_POST['month'] : date('Y-m');
-
-// Convert the selected month to the format stored in the database (e.g., "January", "February", etc.)
-$month_name = date("F", strtotime($selected_month . "-01"));
+$selected_month = $_POST['month'] ?? date('Y-m');
+if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $selected_month)) {
+    $selected_month = date('Y-m');
+}
 
 // Fetch Monthly Budget
 $sql_budget = "SELECT Amount FROM Budget WHERE Uid = ? AND Month = ?";
 $stmt_budget = $conn->prepare($sql_budget);
-$stmt_budget->bind_param("is", $user_id, $month_name);
+$stmt_budget->bind_param("is", $user_id, $selected_month);
 $stmt_budget->execute();
 $result_budget = $stmt_budget->get_result();
 $row_budget = $result_budget->fetch_assoc();
@@ -142,7 +132,7 @@ $conn->close();
         </form>
 
         <div class="budget-info">
-            <p>Month: <?php echo $month_name; ?></p>
+            <p>Month: <?php echo date("F Y", strtotime($selected_month . "-01")); ?></p>
             <p>Monthly Budget: ₹<?php echo number_format($monthly_budget, 2); ?></p>
             <p>Total Expenses: ₹<?php echo number_format($total_spent, 2); ?></p>
             <p>Remaining: ₹<?php echo number_format($monthly_budget - $total_spent, 2); ?></p>
@@ -189,7 +179,7 @@ const expenseChart = new Chart(ctx, {
             },
             title: {
                 display: true,
-                text: 'Daily Expenses for <?php echo $month_name; ?>',
+                text: 'Daily Expenses for <?php echo date("F Y", strtotime($selected_month . "-01")); ?>',
                 color: '#ffffff',
                 font: {
                     size: 18,

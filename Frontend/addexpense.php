@@ -2,19 +2,7 @@
 // Start session to track logged-in user
 session_start();
 
-// Database connection parameters
-$servername = "localhost"; 
-$username = "root"; 
-$password = ""; 
-$dbname = "FiscalPoint"; 
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Function to sanitize input data and prevent double encoding
 function sanitize_input($data) {
@@ -29,7 +17,8 @@ if (!isset($_SESSION["Uid"])) {
 $uid = $_SESSION["Uid"];
 
 // Fetch current month's budget
-$currentMonth = date("F");
+$currentMonth = date("Y-m");
+$currentMonthLabel = date("F Y");
 $sql_budget = "SELECT Amount FROM Budget WHERE Uid = ? AND Month = ?";
 $stmt = $conn->prepare($sql_budget);
 $stmt->bind_param("is", $uid, $currentMonth);
@@ -162,7 +151,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <div class="form-container">
             <h1>Add Expense:</h1>
             <div>
-                <h3 class="budget-text">Your Budget for <?php echo $currentMonth; ?>:</h3>
+                <h3 class="budget-text">Your Budget for <?php echo $currentMonthLabel; ?>:</h3>
                 <div class="Budget">
                     <p><?php echo $monthly_budget; ?></p>
                 </div>
@@ -204,7 +193,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <!-- Display Total Expenses (Hidden) -->
                 <input type="hidden" id="total_expenses" value="<?php echo $total_expenses; ?>">
 
-                <label for="remain-budget">Remaining Budget for <?php echo $currentMonth; ?>:</label>
+                <label for="remain-budget">Remaining Budget for <?php echo $currentMonthLabel; ?>:</label>
                 <input type="text" id="remaining_budget" name="remaining_budget" value="<?php echo $remaining_budget; ?>" readonly>
                 
                 <label for="payment_method">Payment Method:</label>

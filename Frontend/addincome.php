@@ -1,6 +1,5 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
 session_start();
 
 // Check if user is logged in
@@ -10,34 +9,22 @@ if (!isset($_SESSION["Uid"])) {
 
 $user_id = $_SESSION["Uid"];
 
-// Database connection
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "FiscalPoint";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
-}
+require_once __DIR__ . '/db.php';
 
 // Handle form submission for adding income
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["addincome"])) {
     $month = $_POST["month"];  // Stores in YYYY-MM format
     $income = $_POST["budget"]; // Decimal value
     $income = filter_var($income, FILTER_VALIDATE_FLOAT);
-    if (!preg_match('/^\d{4}-\d{2}$/', $month) || $income === false || $income <= 0) {
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month) || $income === false || $income <= 0) {
         echo "<script>alert('Invalid month or income amount.'); window.history.back();</script>";
         exit();
     }
 
-    // Convert month from YYYY-MM to "April" format
-    $month_name = date("F", strtotime($month . "-01"));
-
     // Check if income for this month already exists for the user
     $check_sql = "SELECT * FROM Income WHERE Uid = ? AND Month = ?";
     $stmt = $conn->prepare($check_sql);
-    $stmt->bind_param("is", $user_id, $month_name);
+    $stmt->bind_param("is", $user_id, $month);
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -47,7 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["addincome"])) {
         // Insert new income record
         $insert_sql = "INSERT INTO Income (Uid, Month, Income) VALUES (?, ?, ?)";
         $stmt = $conn->prepare($insert_sql);
-        $stmt->bind_param("isd", $user_id, $month_name, $income);
+        $stmt->bind_param("isd", $user_id, $month, $income);
 
         if ($stmt->execute()) {
             echo "<script>alert('Income added successfully!'); window.location.href = 'addincome.php';</script>";
@@ -62,11 +49,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["addincome"])) {
 // Handle budget reset via AJAX
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["resetIncome"]) && $_POST["resetIncome"] === "true") {
     $month = $_POST["month"];
-    $monthName = date("F", strtotime($month . "-01"));
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+        http_response_code(400);
+        exit("error");
+    }
 
     $delete_sql = "DELETE FROM Income WHERE Uid = ? AND Month = ?";
     $stmt_delete = $conn->prepare($delete_sql);
-    $stmt_delete->bind_param("is", $user_id, $monthName);
+    $stmt_delete->bind_param("is", $user_id, $month);
 
     if ($stmt_delete->execute()) {
         echo "success";  // Fix: Return success response

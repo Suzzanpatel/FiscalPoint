@@ -7,22 +7,16 @@ if (!isset($_SESSION["Uid"])) {
     exit();
 }
 
-$conn = new mysqli("localhost", "root", "", "FiscalPoint");
-if ($conn->connect_error) {
-    http_response_code(500);
-    echo "error";
-    exit();
-}
+require_once __DIR__ . '/db.php';
 
 $month = $_POST["month"] ?? "";
-if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
     echo "missing";
     exit();
 }
 
-$monthName = date("F", strtotime($month . "-01"));
 $stmt = $conn->prepare("SELECT Bid FROM Budget WHERE Uid = ? AND Month = ?");
-$stmt->bind_param("is", $_SESSION["Uid"], $monthName);
+$stmt->bind_param("is", $_SESSION["Uid"], $month);
 $stmt->execute();
 $result = $stmt->get_result();
 

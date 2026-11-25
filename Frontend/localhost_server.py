@@ -40,19 +40,29 @@ def test_db():
             return jsonify({"status": "success", "message": "Database connection successful"})
         else:
             return jsonify({"status": "error", "message": "Could not connect to database"}), 500
-    except Exception as e:
-        error_detail = traceback.format_exc()
-        return jsonify({"status": "error", "message": str(e), "detail": error_detail}), 500
+    except Exception:
+        app.logger.exception("Database connection check failed")
+        return jsonify({"status": "error", "message": "Database connection failed"}), 500
 
 # Database connection
 def get_db_connection():
+    settings = {
+        "host": os.getenv("DB_HOST"),
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "database": os.getenv("DB_NAME"),
+    }
+    if (
+        not settings["host"]
+        or not settings["user"]
+        or settings["password"] is None
+        or not settings["database"]
+    ):
+        app.logger.error("Required database environment variables are missing")
+        return None
+
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "localhost"),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASSWORD", ""),
-            database=os.getenv("DB_NAME", "FiscalPoint")
-        )
+        conn = mysql.connector.connect(**settings)
         return conn
     except mysql.connector.Error as err:
         print(f"Error connecting to database: {err}")
