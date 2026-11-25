@@ -17,13 +17,19 @@ function sanitize_input($data) {
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $uname = sanitize_input($_POST["Uname"]);
-    $email = sanitize_input($_POST["email"]);
-    $phone = sanitize_input($_POST["Phone_no"]);
-    $password = sanitize_input($_POST["Password"]);
-    $confirm_password = sanitize_input($_POST["ConfirmPassword"]);
+    $uname = trim($_POST["Uname"] ?? "");
+    $email = strtolower(trim($_POST["email"] ?? ""));
+    $phone = trim($_POST["Phone_no"] ?? "");
+    $password = $_POST["Password"] ?? "";
+    $confirm_password = $_POST["ConfirmPassword"] ?? "";
     $role = "user";
     $created_at = date("Y-m-d H:i:s");
+
+    // Validate required fields before storing account data.
+    if ($uname === "" || !filter_var($email, FILTER_VALIDATE_EMAIL) || !preg_match("/^[0-9]{10}$/", $phone) || strlen($password) < 8) {
+        echo "<script>alert('Please provide a valid name, email, 10-digit phone number and a password of at least 8 characters.'); window.history.back();</script>";
+        exit();
+    }
 
     // Check if passwords match
     if ($password !== $confirm_password) {
@@ -118,14 +124,8 @@ $conn->close();
     <label for="Phone_no">Phone Number:</label>
     <input type="tel" id="Phone_no" name="Phone_no" placeholder="Enter Phone Number" required pattern="[0-9]{10}" maxlength="10">
 
-    <!-- Role Selection -->
-    <label for="Role">Account Type:</label>
-    <select id="Role" name="Role" class="role-select" required>
-        <option value="user">Regular User</option>
-        <option value="admin">Administrator</option>
-    </select>
-
-    <!-- Password Input -->
+    <!-- Public registrations are always assigned the user role by the server. -->
+<!-- Password Input -->
     <label for="Password">Create Password:</label>
     <input type="password" id="Password" name="Password" placeholder="Password" required>
     <span id="password-error" class="error-message"></span>
