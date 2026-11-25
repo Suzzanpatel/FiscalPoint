@@ -65,7 +65,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     // Validate Date Format (YYYY-MM-DD)
-    if (!DateTime::createFromFormat('Y-m-d', $date)) {
+    $parsedDate = DateTime::createFromFormat('!Y-m-d', $date);
+    $dateErrors = DateTime::getLastErrors();
+    if (!$parsedDate || ($dateErrors !== false && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0)) || $parsedDate->format('Y-m-d') !== $date) {
         echo "<script>alert('Invalid date format. Please enter a valid date.'); window.history.back();</script>";
         exit();
     }
