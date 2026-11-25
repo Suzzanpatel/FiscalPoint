@@ -1,0 +1,156 @@
+/* General Styles */
+body {
+    margin: 0;
+    padding: 0;
+    background-color: black;
+    font-family: Arial, sans-serif;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+
+.logo {
+  width: 150px;
+  position: absolute; 
+  top: 10px; 
+  left: 10px; 
+}
+
+
+/* Sidebar */
+.sidebar {
+    position: absolute; 
+    left: 0; 
+    width: 16%; 
+    height: 67%; 
+    background-color: rgba(92, 84, 112, 0.6); 
+    padding: 20px;
+    border-radius:  20px;
+    margin-top: 10%;
+}
+
+/* Sidebar Dropdown */
+.dropdown ul {
+    display: none;
+    list-style-type:circle;
+    padding: 0;
+    margin: 0;
+    margin-left: 30px;
+}
+
+.dropdown:hover ul {
+    display: block;
+}
+
+.dropdown ul li {
+    padding: 8px;
+    background: rgba(72, 67, 87, 0.6);
+}
+
+.dropdown ul li a {
+    font-size: 17px;
+}
+
+
+
+.profile {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.avatar {
+  width: 140px;
+  height: 140px;
+  object-fit: cover; 
+
+}
+.logo {
+    width: 150px;
+    position: absolute;
+    top: 10px;
+    left: 10px;
+}
+
+.menu {
+    list-style: none;
+    padding: 0;
+    
+}
+.menu a {
+    margin: 15px 0;
+    font-size: 18px;
+    color: white;
+    text-decoration: none;
+}
+
+
+h2
+{
+    position: absolute; 
+    top: 40px; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    text-align: center;
+    font-family: 'Times New Roman', Times, serif;
+}
+
+.filter-form {
+    display: flex;
+    justify-content: center; 
+    align-items: center; 
+    gap: 10px; 
+    background-color: rgba(92, 84, 112, 0.6); 
+    padding: 15px; 
+    border-radius: 10px; 
+    width: fit-content; 
+    margin: 95px auto; 
+    position: absolute; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    top: 10px; 
+}
+
+.filter-form label {
+    color: white; 
+    font-size: 16px;
+}
+
+.filter-form input {
+    padding: 5px;
+    border: none;
+    border-radius: 5px;
+}
+
+.filter-form button {
+    background-color: #E5C4C4; 
+    color: black; 
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.filter-form button:hover {
+  
+    color: black;
+}
+
+.chart-container {
+    padding-left:10rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-top: 10%;
+   
+}
+
+.expensePieGraph {
+    padding-left: 50px;
+    border-radius: 20px;
+    font-family:'Times New Roman', Times, serif;
+}
