@@ -14,8 +14,8 @@ function sanitize_input($data) {
 
 // On form submit
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $email = sanitize_input($_POST["email"]);
-    $password = sanitize_input($_POST["password"]);
+    $email = strtolower(trim($_POST["email"] ?? ""));
+    $password = $_POST["password"] ?? "";
 
     // Fetch user with role
     $query = "SELECT Uid, Uname, Password, Role FROM User WHERE email = ?";
