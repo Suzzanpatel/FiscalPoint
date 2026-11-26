@@ -12,6 +12,44 @@
 
 declare(strict_types=1);
 
+/**
+ * Readable error page instead of a blank "HTTP ERROR 500". Details (message, file, line) are
+ * shown only to requests from the same machine (local development) or when APP_DEBUG=true;
+ * everyone else gets a generic message. Registered first so it also covers setup problems
+ * such as a missing extension or an unreadable .env file.
+ */
+function fiscalpoint_error_page(string $message, string $file, int $line): void
+{
+    $local = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true) || PHP_SAPI === 'cli';
+    $debug = (($_ENV['APP_DEBUG'] ?? getenv('APP_DEBUG')) === 'true');
+    error_log("FiscalPoint fatal error: $message in $file:$line");
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/html; charset=utf-8');
+    }
+    echo '<div style="font-family:sans-serif;max-width:900px;margin:40px auto;padding:20px;border:1px solid #d9534f;border-radius:8px;">'
+        . '<h2 style="color:#d9534f;margin-top:0;">FiscalPoint could not load this page</h2>';
+    if ($local || $debug) {
+        echo '<p><strong>Error:</strong> ' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</p>'
+            . '<p><strong>Where:</strong> ' . htmlspecialchars($file, ENT_QUOTES, 'UTF-8') . ' line ' . $line . '</p>'
+            . '<p style="color:#666;">Shown because you are on the same machine as the server. See docs/SETUP.md, "Troubleshooting".</p>';
+    } else {
+        echo '<p>Please try again later.</p>';
+    }
+    echo '</div>';
+}
+
+set_exception_handler(static function (Throwable $e): void {
+    fiscalpoint_error_page(get_class($e) . ': ' . $e->getMessage(), $e->getFile(), $e->getLine());
+});
+
+register_shutdown_function(static function (): void {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        fiscalpoint_error_page($error['message'], $error['file'], $error['line']);
+    }
+});
+
 define('WEB_ROOT', dirname(__DIR__));          // .../FiscalPoint/web
 define('PROJECT_ROOT', dirname(WEB_ROOT));     // .../FiscalPoint
 
