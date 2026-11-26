@@ -24,3 +24,7 @@ reports/REPORT.md
 .DS_Store
 .idea/
 .vscode/
+
+# composer.lock is not committed: the app supports PHP 8.0-8.4, so each machine resolves
+# the newest compatible versions (composer.json pins the platform to PHP 8.0).
+composer.lock

@@ -6,7 +6,7 @@ This guide gets FiscalPoint running locally: the PHP web app, the database and t
 
 | Component | Version | Notes |
 |---|---|---|
-| PHP | 8.1+ | Extensions: `mysqli`, `curl`, `mbstring`, `gd`, `zip`, `xml` (all included in XAMPP) |
+| PHP | 8.0+ | Extensions: `mysqli`, `curl`, `mbstring`, `gd`, `zip`, `xml` (all included in XAMPP; works with XAMPP's PHP 8.0) |
 | Composer | 2.x | https://getcomposer.org |
 | MySQL / MariaDB | MySQL 8.0.16+ or MariaDB 10.4+ | XAMPP ships MariaDB |
 | Python | 3.10+ | For training and serving the models |
@@ -123,4 +123,7 @@ registry and every API endpoint including its security checks. `make lint-php` s
 | "Not enough history yet" on predictions | The user needs at least one complete month of expenses |
 | Warning about scikit-learn version mismatch | Retrain after upgrading scikit-learn |
 | Password-reset link expired immediately | Make sure `APP_TIMEZONE` is set; PHP and MySQL must agree on the clock |
+| `composer install`: "requires php ^8.1 / ^8.2" | You have an old `composer.lock` (from the original repo). Delete `composer.lock` and run `composer install` again |
+| Many `PHP Warning: Unable to load dynamic library 'php_curl.dll'` (macOS) | Your `php.ini` contains Windows extension lines. In `/Applications/XAMPP/xamppfiles/etc/php.ini`, put `;` in front of every `extension=php_*.dll` line and `extension=mysqli`; on macOS XAMPP these are built in. Check with `php -m` |
+| `composer` or `php` uses a different PHP than XAMPP (macOS) | `export PATH=/Applications/XAMPP/xamppfiles/bin:$PATH`, then `php -v` |
 | Import of the old `FiscalPoint.sql` failed | Expected: that dump referenced tables before creating them. Use `database/schema.sql` |

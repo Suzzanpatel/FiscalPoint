@@ -64,7 +64,7 @@ FiscalPoint/
 
 ## Quick start
 
-Prerequisites: PHP 8.1+ with `mysqli`, `curl`, `mbstring`, `gd`, `zip`; Composer; MySQL 8 or MariaDB 10.4+
+Prerequisites: PHP 8.0+ with `mysqli`, `curl`, `mbstring`, `gd`, `zip`; Composer; MySQL 8 or MariaDB 10.4+
 (XAMPP works); Python 3.10+.
 
 ```bash
