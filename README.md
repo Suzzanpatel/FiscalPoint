@@ -1,145 +1,129 @@
-# FiscalPoint – Personal Expense Tracker
+# FiscalPoint — ML-powered personal finance
 
-FiscalPoint is a web-based personal finance and expense management application developed as a BSc IT minor project. It provides users with a structured platform to record daily expenses, manage monthly budgets, monitor spending patterns, and generate financial reports.
+FiscalPoint is a personal finance web application that **learns from spending history** to
+forecast future expenses, warn about budget overruns, categorise expenses automatically and
+flag unusual transactions. It started as a BSc IT expense-tracker project (PHP + MySQL); version 2
+turns it into a machine-learning project with a proper training pipeline, evaluation against
+baselines, a model registry and an inference API that the web app consumes.
 
-The project demonstrates the practical application of web development, database management, and predictive analytics to personal financial management.
+| ML capability | What the user sees | Model | Evaluation (latest run) |
+|---|---|---|---|
+| **Spending forecast** | Expected spend this month and next, per category, with an 80 % range | Global gradient-boosted trees (scikit-learn `HistGradientBoostingRegressor`), Poisson loss + quantile models | Rolling-origin backtest: **7–11 % lower MAE** than the best of 4 baselines; 80 % interval covers 78–87 % |
+| **Budget-overrun risk** | "18 % chance of exceeding your budget", projected month-end total | Forecast + learned within-month spending curve + empirical error scale | Brier score 0.18 / 0.13 / 0.09 at day 5 / 15 / 25 vs 0.25 no-skill |
+| **Expense categorizer** | Category suggestions while typing a description | TF-IDF (char + word n-grams) + payment method + amount bins → logistic regression | Hold-out accuracy **94.9 %**, macro-F1 0.89, top-3 96.6 % |
+| **Anomaly detection** | "₹8,231 is 28.5× your usual Food spend" | Isolation Forest on user-relative features + explainable ratio rule | Precision 0.58 / recall 0.28 on labelled anomalies (beats two rule baselines on F1 and precision) |
 
-Features
+All numbers come from `reports/REPORT.md`, which the training pipeline regenerates on every run.
+They are measured on **synthetic data** (see [Model card](docs/MODEL_CARD.md) for what that means).
 
-- Expense Tracking: Add, manage, and monitor daily expenses.
-- Expense Categorisation: Organise transactions into categories for better financial visibility.
-- Budget Management: Set monthly budgets and track spending against allocated limits.
-- Income Management: Record and manage monthly income.
-- User Accounts: Maintain individual user accounts and financial records.
-- Financial Reports: Generate reports to analyse spending patterns.
-- Data Export: Export financial records to Excel and PDF.
-- Expense Prediction: Forecast future category-wise expenses using historical spending data and evaluate prediction accuracy through backtesting.
+---
 
-Technology Stack
+## Architecture at a glance
 
- Frontend - HTML, CSS, JavaScript 
- Backend - PHP 
- Database - MySQL 
- Prediction Service - Python 
- Dependency Management -  Composer 
- Local Development - XAMPP 
-
-Installation and Setup
-
-Prerequisites
-
-Ensure the following are installed:
-
-- XAMPP (Apache and MySQL)
-- PHP
-- Composer
-- Python
-- Git
-
-1. Clone the Repository
-
-```bash
-git clone https://github.com/Suzzanpatel/FiscalPoint.git
+```
+ Browser ──► Apache/PHP (web/)  ──SQL──►  MySQL / MariaDB
+                    │                          ▲
+                    │ HTTP + X-API-Key         │ reads Expense / Budget
+                    ▼                          │
+            Flask ML service (ml/fiscalpoint_ml/api.py)
+                    │ loads
+                    ▼
+            models/*.joblib  ◄── python -m fiscalpoint_ml.train  (backtest, fit, report)
 ```
 
-2. Navigate to the Project Directory
+The browser never talks to the ML service directly: PHP calls it server-side, so the service
+can stay bound to `127.0.0.1` and protected by a shared token. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-```bash
-cd FiscalPoint
-```
-
-3. Install PHP Dependencies
-
-```bash
-composer install
-```
-
-4. Configure the Database
-
-    1. Start Apache and MySQL using XAMPP.
-    2. Open phpMyAdmin at `http://localhost/phpmyadmin`.
-    3. Create a MySQL database named `FiscalPoint`.
-    4. Import the `FiscalPoint.sql` file into the database.
-
-5. Configure Environment Variables
-
-Create a `.env` file in the project root directory and configure your database credentials:
-
-```env
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=
-DB_NAME=FiscalPoint
-```
-
-The PHP application and Python prediction service read their database configuration from these environment variables.
-
-**Important:** The `.env` file is excluded from Git for security reasons. Configure the same database values for both local runtimes. Never commit database credentials to the repository.
-
-6. Launch the Application
-
-Open the following URL in your browser:
-
-```text
-http://localhost/FiscalPoint/Frontend/
-```
-
-Expense Prediction Methodology
-
-FiscalPoint includes a category-wise expense forecasting mechanism that evaluates historical spending patterns to predict future monthly expenses.
-
-Data Preparation
-
-- Expense transactions are aggregated into monthly totals for each category.
-- Missing months are represented by zero.
-- Monthly observations are evaluated chronologically.
-
-Forecasting Models
-
-Three forecasting approaches are evaluated:
-
-1. **Naive Forecast:** Uses the previous month's expense as the next month's prediction.
-2. **Three-Month Moving Average:** Uses the average of the previous three months.
-3. **Linear Regression:** Models the relationship between monthly expense totals and a continuous month index (0, 1, 2, ...).
-
-Model Evaluation
-
-An expanding-window, one-month-ahead backtesting approach is used.
-
-- The first three monthly observations are used to initialise the forecasting methods.
-- Each subsequent month is predicted using only previously available observations.
-- Mean Absolute Error (MAE) measures the accuracy of each forecasting method.
-- Linear regression is selected only when its rolling MAE is strictly lower than both baseline methods. Otherwise, the better-performing baseline is selected.
-
-Sample Data Limitations
-
-The included SQL sample currently contains expense records for only one month. Therefore, reliable rolling prediction errors cannot yet be calculated.
-
-At least four consecutive monthly observations per category are required to generate one backtest error.
-
-The `/evaluate_model` endpoint returns category-wise and overall rolling MAE results when sufficient historical data is available.
-
-`N/A` indicates insufficient historical observations, not zero prediction error.
-
-Database Migration Considerations
-
-Budget and income records store their month in `YYYY-MM` format.
-
-If an existing database contains legacy records storing only month names, the correct year must be assigned manually before deploying this version.
-
-Legacy month values cannot be migrated automatically because they do not contain enough information to identify the correct year.
-
- Project Structure
+## Repository layout
 
 ```text
 FiscalPoint/
-│
-├── Frontend/          # User interface
-├── vendor/            # Composer dependencies
-├── FiscalPoint.sql    # Database structure and sample data
-├── composer.json      # PHP dependency configuration
-├── composer.lock      # Locked dependency versions
-├── .env               # Local environment configuration
-└── README.md           # Project documentation
+├── web/                     PHP application (Apache document root)
+│   ├── includes/            bootstrap (session, CSRF, escaping, auth), DB, ML client, sidebars
+│   ├── admin/               administrator pages (users, categories, queries, ML model status)
+│   ├── api/                 small JSON/AJAX endpoints (budget check, account deletion, ML proxy)
+│   ├── assets/              css/, js/, img/, vendor/ (pinned Chart.js, jQuery, Font Awesome)
+│   └── *.php                user pages (dashboard, expenses, reports, predictions, ...)
+├── ml/                      Python machine-learning package
+│   ├── fiscalpoint_ml/      data, features, forecasting, categorizer, anomaly, budget, api, train
+│   ├── tests/               pytest suite (43 tests)
+│   ├── requirements.txt
+│   └── pyproject.toml
+├── database/
+│   ├── schema.sql           clean schema (fresh installs)
+│   ├── seed_demo.sql        synthetic demo users + 2 years of history (no real personal data)
+│   └── migrations/          upgrade script for databases created from the old dump
+├── models/                  trained artifacts (generated, git-ignored)
+├── reports/                 evaluation report + charts (generated, git-ignored)
+├── data/                    optional CSV exports of synthetic data (generated, git-ignored)
+├── docs/                    documentation (see below)
+├── composer.json            PHP dependencies (PhpSpreadsheet, mPDF, PHPMailer, phpdotenv)
+├── .env.example             all configuration options
+└── Makefile                 shortcuts for the common commands
 ```
 
+## Quick start
+
+Prerequisites: PHP 8.1+ with `mysqli`, `curl`, `mbstring`, `gd`, `zip`; Composer; MySQL 8 or MariaDB 10.4+
+(XAMPP works); Python 3.10+.
+
+```bash
+git clone https://github.com/Suzzanpatel/FiscalPoint.git && cd FiscalPoint
+composer install
+cp .env.example .env                      # then edit DB_* and set ML_API_TOKEN
+
+# database (schema + optional demo data)
+mysql -u root -p -e "CREATE DATABASE FiscalPoint CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql -u root -p FiscalPoint < database/schema.sql
+mysql -u root -p FiscalPoint < database/seed_demo.sql
+
+# machine learning
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r ml/requirements.txt
+cd ml
+python -m fiscalpoint_ml.train --source db --augment-synthetic   # ~1 minute; writes models/ and reports/
+python -m fiscalpoint_ml.api                                     # ML service on http://127.0.0.1:5001
+```
+
+Open `http://localhost/FiscalPoint/web/` (XAMPP) or run `php -S 127.0.0.1:8080 -t web` and open
+`http://127.0.0.1:8080`. Demo logins from `seed_demo.sql`:
+
+| Account | Email | Password |
+|---|---|---|
+| User | `demo.user1@fiscalpoint.test` (… `demo.user8`) | `Demo@1234` |
+| Admin | `admin@fiscalpoint.test` | `Admin@1234` |
+
+Change or delete these accounts on anything other than a local machine. Full instructions,
+Windows/XAMPP notes and troubleshooting: [docs/SETUP.md](docs/SETUP.md).
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/SETUP.md](docs/SETUP.md) | Installation, configuration, running, troubleshooting |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, request flow, security model, folder conventions |
+| [docs/ML_PIPELINE.md](docs/ML_PIPELINE.md) | Data, features, every model, evaluation method, how to retrain and extend |
+| [docs/MODEL_CARD.md](docs/MODEL_CARD.md) | Intended use, metrics, limitations, ethical considerations |
+| [docs/API.md](docs/API.md) | ML service endpoints with request / response examples |
+| [docs/DATABASE.md](docs/DATABASE.md) | Schema, constraints, demo data, upgrading an existing database |
+| [docs/ISSUES_FIXED.md](docs/ISSUES_FIXED.md) | Audit of the original code: every issue found and how it was fixed |
+
+## Common commands
+
+```bash
+make test          # Python tests + PHP syntax check
+make train         # train on synthetic data
+make train-db      # train on the database (+ synthetic augmentation)
+make api           # start the ML service
+make serve         # PHP development server on :8080
+make seed          # regenerate database/seed_demo.sql
+```
+
+## Technology
+
+PHP 8 · MySQL/MariaDB · Chart.js · Python 3 · pandas · scikit-learn · SciPy · Flask · pytest.
+
+## License and credits
+
+Originally developed as a BSc IT minor project by Suzzan Patel. Bundled front-end libraries keep
+their own licenses (see `web/assets/vendor/README.md`).

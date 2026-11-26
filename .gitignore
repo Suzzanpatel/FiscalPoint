@@ -1,6 +1,26 @@
+# secrets / local config
 .env
+*.local
+
+# dependencies
 vendor/
 __pycache__/
 *.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# generated ML artifacts (re-create with: python -m fiscalpoint_ml.train)
+models/*
+!models/README.md
+data/synthetic/
+data/raw/
+reports/*.png
+reports/REPORT.md
+
+# misc
 *.log
 .DS_Store
+.idea/
+.vscode/

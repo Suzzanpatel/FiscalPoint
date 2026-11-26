@@ -1,3 +1,17 @@
-<FilesMatch "^(\.env|.*\.sql)$">
-    Require all denied
-</FilesMatch>
+# Apache config for when the whole repository sits inside htdocs (e.g. XAMPP).
+# Only the web/ folder is public; everything else (ML code, models, .env, SQL, vendor/, .git)
+# is blocked. Better still: point the virtual host's DocumentRoot at web/ directly.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^$ web/ [R=302,L]
+    RewriteCond %{REQUEST_URI} !/web/
+    RewriteRule ^ - [F,L]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+    <FilesMatch "^(\.env.*|.*\.sql|.*\.py|.*\.joblib|.*\.json|.*\.lock|.*\.md)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
