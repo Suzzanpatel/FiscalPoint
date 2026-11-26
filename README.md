@@ -107,6 +107,8 @@ Windows/XAMPP notes and troubleshooting: [docs/SETUP.md](docs/SETUP.md).
 | [docs/API.md](docs/API.md) | ML service endpoints with request / response examples |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema, constraints, demo data, upgrading an existing database |
 | [docs/ISSUES_FIXED.md](docs/ISSUES_FIXED.md) | Audit of the original code: every issue found and how it was fixed |
+| [docs/SECURITY_AND_REMEDIATION.md](docs/SECURITY_AND_REMEDIATION.md) | Earlier code review and remediation register (pre-v2 code) |
+| [docs/SYSTEM_DOCUMENTATION.md](docs/SYSTEM_DOCUMENTATION.md) | Earlier system documentation (pre-v2 code) |
 
 ## Common commands
 
